@@ -21,10 +21,12 @@
     <div id="experiment-container">
         <div id="welcome-screen">
             <h1>Motion Perception Task</h1>
-            <p>Identify the direction of the coherent motion (Left or Right).</p>
-            <input type="text" id="participant-id" placeholder="Enter Initials">
-            <br>
-            <button onclick="startExperiment()">Start Task</button>
+            <p id="welcome-text">Identify the direction of the coherent motion (Left or Right).</p>
+            <div id="input-area">
+                <input type="text" id="participant-id" placeholder="Enter Initials">
+                <br>
+                <button onclick="startExperiment()">Start Task</button>
+            </div>
         </div>
 
         <div id="task-screen" class="hidden">
@@ -49,27 +51,52 @@
     const totalTrials = 10;
     let trialData = [];
     let startTime, timerInterval;
+    let availableConditions = []; // Will be populated from Google Sheets
     
     // RDM Settings
     const canvas = document.getElementById('rdmCanvas');
     const ctx = canvas.getContext('2d');
     let dots = [];
     const numDots = 100;
-    const coherence = 0.20; // 20% from your proposal
-    let targetDirection; // 1 for Right, -1 for Left
+    const coherence = 0.20; 
+    let targetDirection; 
     let animationId;
+
+    // --- NEW: Check availability on load ---
+    async function checkAvailability() {
+        try {
+            const response = await fetch(WEB_APP_URL);
+            const data = await response.json();
+            
+            if (data.full) {
+                document.getElementById('welcome-text').innerText = "The study has reached its maximum capacity of 30 participants. Thank you for your interest!";
+                document.getElementById('input-area').classList.add('hidden');
+            } else {
+                availableConditions = data.availableConditions;
+            }
+        } catch (e) {
+            console.error("Connection error:", e);
+            // Fallback: allow all conditions if the check fails
+            availableConditions = ['Control', 'Implicit', 'Explicit'];
+        }
+    }
+
+    // Call the availability check immediately
+    checkAvailability();
 
     function startExperiment() {
         participantID = document.getElementById('participant-id').value || "User_" + Math.random().toString(36).substr(2, 5);
         
-        // Randomly assign one of 3 conditions
-        const conditions = ['Control', 'Implicit', 'Explicit'];
-        condition = conditions[Math.floor(Math.random() * conditions.length)];
+        // Pick a condition ONLY from those that still need participants
+        if (availableConditions.length === 0) {
+            alert("Checking availability, please wait a moment...");
+            return;
+        }
+        condition = availableConditions[Math.floor(Math.random() * availableConditions.length)];
         
         document.getElementById('welcome-screen').classList.add('hidden');
         document.getElementById('task-screen').classList.remove('hidden');
 
-        // Apply condition logic
         if (condition !== 'Control') {
             document.getElementById('timer').classList.remove('hidden');
         }
@@ -109,13 +136,12 @@
         
         dots.forEach(dot => {
             if (dot.isCoherent) {
-                dot.x += (targetDirection * 3); // Faster coherent speed
+                dot.x += (targetDirection * 3);
             } else {
                 dot.x += dot.vx;
                 dot.y += dot.vy;
             }
             
-            // Wrap around edges
             if (dot.x > canvas.width) dot.x = 0;
             if (dot.x < 0) dot.x = canvas.width;
             if (dot.y > canvas.height) dot.y = 0;
@@ -147,7 +173,7 @@
             });
             
             currentTrial++;
-            setTimeout(initTrial, 500); // ISI of 500ms
+            setTimeout(initTrial, 500); 
         }
     }
 
@@ -163,7 +189,6 @@
         document.getElementById('results-screen').classList.remove('hidden');
 
         try {
-            // 1. Send Data (mode: 'no-cors' prevents the script from hanging)
             await fetch(WEB_APP_URL, {
                 method: "POST",
                 mode: "no-cors", 
@@ -171,20 +196,18 @@
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(trialData)
             });
-            console.log("Data sent to Google.");
         } catch (error) {
             console.error("Data send failed:", error);
         }
 
-        // 2. Small delay to ensure Google has time to process before we ask for history
         setTimeout(async () => {
             try {
                 const response = await fetch(WEB_APP_URL);
-                const history = await response.json();
-                plotResults(history);
+                const data = await response.json();
+                // Pass the history array (extracted from the object) to the plot
+                plotResults(data.history || []);
             } catch (err) {
                 console.error("Could not fetch history:", err);
-                // Plot just the user data if global data fails
                 plotResults([]); 
             }
         }, 1500);
@@ -192,18 +215,15 @@
 
     function plotResults(history) {
         const userAvg = trialData.reduce((a, b) => a + b.Reaction_Time, 0) / trialData.length;
-        
-        // Calculate Global Avg only if history exists and has numbers
         let globalAvg = 0;
+        
         if (history && history.length > 0) {
             globalAvg = history.reduce((a, b) => a + Number(b), 0) / history.length;
         } else {
-            globalAvg = userAvg; // Fallback if sheet is empty
+            globalAvg = userAvg;
         }
 
         const ctxChart = document.getElementById('resultsChart').getContext('2d');
-        
-        // Destroy existing chart if it exists (prevents ghosting)
         if (window.myChart) { window.myChart.destroy(); }
 
         window.myChart = new Chart(ctxChart, {
@@ -222,7 +242,6 @@
             }
         });
 
-        // Hide the "Saving..." text once chart appears
         document.querySelector('#results-screen p').innerText = "Task Complete!";
     }
 </script>
