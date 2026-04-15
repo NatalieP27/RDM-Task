@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RDM Decision Task</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { background-color: #111; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
+        #experiment-container { text-align: center; max-width: 600px; }
+        canvas { background: black; border: 2px solid #444; cursor: crosshair; }
+        .hidden { display: none; }
+        #timer { font-size: 24px; color: #ff4444; margin-bottom: 10px; font-family: monospace; }
+        button { padding: 10px 20px; font-size: 18px; cursor: pointer; background: #444; color: white; border: none; border-radius: 5px; }
+        button:hover { background: #666; }
+        input { padding: 10px; font-size: 16px; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+
+    <div id="experiment-container">
+        <div id="welcome-screen">
+            <h1>Motion Perception Task</h1>
+            <p>Identify the direction of the coherent motion (Left or Right).</p>
+            <input type="text" id="participant-id" placeholder="Enter Initials">
+            <br>
+            <button onclick="startExperiment()">Start Task</button>
+        </div>
+
+        <div id="task-screen" class="hidden">
+            <div id="timer" class="hidden">Time: <span id="time-val">0.00</span>s</div>
+            <div id="instruction-text" style="margin-bottom:10px;">Use Left/Right arrow keys to respond.</div>
+            <canvas id="rdmCanvas" width="500" height="400"></canvas>
+        </div>
+
+        <div id="results-screen" class="hidden">
+            <h2>Task Complete</h2>
+            <p>Your data is being saved...</p>
+            <canvas id="resultsChart" width="400" height="300"></canvas>
+        </div>
+    </div>
+
+<script>
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx4eG8pgxQSooZmsZJZywJlQdGvrPQn0lHvByjwnoPvPxknnI8aq8gTnFAubDljHlA/exec";
+    
+    // Experiment Variables
+    let participantID, condition;
+    let currentTrial = 0;
+    const totalTrials = 10;
+    let trialData = [];
+    let startTime, timerInterval;
+    
+    // RDM Settings
+    const canvas = document.getElementById('rdmCanvas');
+    const ctx = canvas.getContext('2d');
+    let dots = [];
+    const numDots = 100;
+    const coherence = 0.20; // 20% from your proposal
+    let targetDirection; // 1 for Right, -1 for Left
+    let animationId;
+
+    function startExperiment() {
+        participantID = document.getElementById('participant-id').value || "User_" + Math.random().toString(36).substr(2, 5);
+        
+        // Randomly assign one of 3 conditions
+        const conditions = ['Control', 'Implicit', 'Explicit'];
+        condition = conditions[Math.floor(Math.random() * conditions.length)];
+        
+        document.getElementById('welcome-screen').classList.add('hidden');
+        document.getElementById('task-screen').classList.remove('hidden');
+
+        // Apply condition logic
+        if (condition !== 'Control') {
+            document.getElementById('timer').classList.remove('hidden');
+        }
+        if (condition === 'Explicit') {
+            document.getElementById('instruction-text').innerText = "RESPOND AS FAST AS POSSIBLE! (Left/Right Arrows)";
+            document.getElementById('instruction-text').style.color = "yellow";
+        }
+
+        initTrial();
+    }
+
+    function initTrial() {
+        if (currentTrial >= totalTrials) return endExperiment();
+        
+        targetDirection = Math.random() > 0.5 ? 1 : -1;
+        dots = [];
+        for (let i = 0; i < numDots; i++) {
+            dots.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                vx: (Math.random() - 0.5) * 2,
+                vy: (Math.random() - 0.5) * 2,
+                isCoherent: Math.random() < coherence
+            });
+        }
+        
+        startTime = performance.now();
+        if (condition !== 'Control') startTimerUI();
+        animate();
+        window.addEventListener('keydown', handleResponse);
+    }
+
+    function animate() {
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = 'white';
+        
+        dots.forEach(dot => {
+            if (dot.isCoherent) {
+                dot.x += (targetDirection * 3); // Faster coherent speed
+            } else {
+                dot.x += dot.vx;
+                dot.y += dot.vy;
+            }
+            
+            // Wrap around edges
+            if (dot.x > canvas.width) dot.x = 0;
+            if (dot.x < 0) dot.x = canvas.width;
+            if (dot.y > canvas.height) dot.y = 0;
+            if (dot.y < 0) dot.y = canvas.height;
+            
+            ctx.beginPath();
+            ctx.arc(dot.x, dot.y, 2, 0, Math.PI * 2);
+            ctx.fill();
+        });
+        animationId = requestAnimationFrame(animate);
+    }
+
+    function handleResponse(e) {
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+            const rt = performance.now() - startTime;
+            const responseDir = e.key === 'ArrowRight' ? 1 : -1;
+            const isCorrect = responseDir === targetDirection ? 1 : 0;
+            
+            window.removeEventListener('keydown', handleResponse);
+            cancelAnimationFrame(animationId);
+            clearInterval(timerInterval);
+            
+            trialData.push({
+                Participant_ID: participantID,
+                Condition: condition,
+                Trial_Number: currentTrial + 1,
+                Reaction_Time: Math.round(rt),
+                Accuracy: isCorrect
+            });
+            
+            currentTrial++;
+            setTimeout(initTrial, 500); // ISI of 500ms
+        }
+    }
+
+    function startTimerUI() {
+        const timeBox = document.getElementById('time-val');
+        timerInterval = setInterval(() => {
+            timeBox.innerText = ((performance.now() - startTime) / 1000).toFixed(2);
+        }, 50);
+    }
+
+    async function endExperiment() {
+        document.getElementById('task-screen').classList.add('hidden');
+        document.getElementById('results-screen').classList.remove('hidden');
+
+        // Send Data
+        await fetch(WEB_APP_URL, {
+            method: "POST",
+            body: JSON.stringify(trialData)
+        });
+
+        // Get Historical Data and Plot
+        const response = await fetch(WEB_APP_URL);
+        const history = await response.json();
+        plotResults(history);
+    }
+
+    function plotResults(history) {
+        const userAvg = trialData.reduce((a, b) => a + b.Reaction_Time, 0) / totalTrials;
+        const ctxChart = document.getElementById('resultsChart').getContext('2d');
+        
+        new Chart(ctxChart, {
+            type: 'bar',
+            data: {
+                labels: ['Your Average', 'Global Avg'],
+                datasets: [{
+                    label: 'Reaction Time (ms)',
+                    data: [userAvg, history.reduce((a, b) => a + b, 0) / history.length],
+                    backgroundColor: ['#44bbff', '#ff4444']
+                }]
+            },
+            options: { scales: { y: { beginAtZero: true } } }
+        });
+    }
+</script>
+</body>
+</html>
