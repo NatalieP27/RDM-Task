@@ -158,38 +158,72 @@
         }, 50);
     }
 
-    async function endExperiment() {
+   async function endExperiment() {
         document.getElementById('task-screen').classList.add('hidden');
         document.getElementById('results-screen').classList.remove('hidden');
 
-        // Send Data
-        await fetch(WEB_APP_URL, {
-            method: "POST",
-            body: JSON.stringify(trialData)
-        });
+        try {
+            // 1. Send Data (mode: 'no-cors' prevents the script from hanging)
+            await fetch(WEB_APP_URL, {
+                method: "POST",
+                mode: "no-cors", 
+                cache: "no-cache",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(trialData)
+            });
+            console.log("Data sent to Google.");
+        } catch (error) {
+            console.error("Data send failed:", error);
+        }
 
-        // Get Historical Data and Plot
-        const response = await fetch(WEB_APP_URL);
-        const history = await response.json();
-        plotResults(history);
+        // 2. Small delay to ensure Google has time to process before we ask for history
+        setTimeout(async () => {
+            try {
+                const response = await fetch(WEB_APP_URL);
+                const history = await response.json();
+                plotResults(history);
+            } catch (err) {
+                console.error("Could not fetch history:", err);
+                // Plot just the user data if global data fails
+                plotResults([]); 
+            }
+        }, 1500);
     }
 
     function plotResults(history) {
-        const userAvg = trialData.reduce((a, b) => a + b.Reaction_Time, 0) / totalTrials;
+        const userAvg = trialData.reduce((a, b) => a + b.Reaction_Time, 0) / trialData.length;
+        
+        // Calculate Global Avg only if history exists and has numbers
+        let globalAvg = 0;
+        if (history && history.length > 0) {
+            globalAvg = history.reduce((a, b) => a + Number(b), 0) / history.length;
+        } else {
+            globalAvg = userAvg; // Fallback if sheet is empty
+        }
+
         const ctxChart = document.getElementById('resultsChart').getContext('2d');
         
-        new Chart(ctxChart, {
+        // Destroy existing chart if it exists (prevents ghosting)
+        if (window.myChart) { window.myChart.destroy(); }
+
+        window.myChart = new Chart(ctxChart, {
             type: 'bar',
             data: {
                 labels: ['Your Average', 'Global Avg'],
                 datasets: [{
                     label: 'Reaction Time (ms)',
-                    data: [userAvg, history.reduce((a, b) => a + b, 0) / history.length],
+                    data: [Math.round(userAvg), Math.round(globalAvg)],
                     backgroundColor: ['#44bbff', '#ff4444']
                 }]
             },
-            options: { scales: { y: { beginAtZero: true } } }
+            options: { 
+                responsive: true,
+                scales: { y: { beginAtZero: true, title: { display: true, text: 'Milliseconds' } } } 
+            }
         });
+
+        // Hide the "Saving..." text once chart appears
+        document.querySelector('#results-screen p').innerText = "Task Complete!";
     }
 </script>
 </body>
