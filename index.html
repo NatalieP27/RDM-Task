@@ -61,6 +61,7 @@
     const coherence = 0.05; 
     const dotVelocity = 100;
     const dotRadius = 1; 
+    const noiseSpeedMultiplier = 10;
     let targetDirection; 
     let animationId;
 
@@ -119,8 +120,8 @@
             dots.push({
                 x: Math.random() * canvas.width,
                 y: Math.random() * canvas.height,
-                vx: (Math.random() - 0.5) * 8,
-                vy: (Math.random() - 0.5) * 8,
+                vx: (Math.random() - 0.5) * noiseSpeedMultiplier,
+                vy: (Math.random() - 0.5) * noiseSpeedMultiplier,
                 isCoherent: Math.random() < coherence
             });
         }
