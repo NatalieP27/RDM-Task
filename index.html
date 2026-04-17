@@ -57,8 +57,10 @@
     const canvas = document.getElementById('rdmCanvas');
     const ctx = canvas.getContext('2d');
     let dots = [];
-    const numDots = 100;
-    const coherence = 0.12; 
+    const numDots = 250;
+    const coherence = 0.05; 
+    const dotSpeed = 3;
+    const dotRadius = 1; 
     let targetDirection; 
     let animationId;
 
