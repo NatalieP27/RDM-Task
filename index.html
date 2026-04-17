@@ -62,6 +62,7 @@
     const dotVelocity = 100;
     const dotRadius = 1; 
     const noiseSpeedMultiplier = 10;
+    const signalSpeed = 10;
     let targetDirection; 
     let animationId;
 
@@ -139,7 +140,7 @@
         
         dots.forEach(dot => {
             if (dot.isCoherent) {
-                dot.x += (targetDirection * 1);
+                dot.x += (targetDirection * signalSpeed);
             } else {
                 dot.x += dot.vx;
                 dot.y += dot.vy;
