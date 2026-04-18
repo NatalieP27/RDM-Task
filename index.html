@@ -11,10 +11,9 @@
         canvas { background: black; border: 2px solid #444; cursor: crosshair; }
         .hidden { display: none; }
         #timer { font-size: 24px; color: #ff4444; margin-bottom: 10px; font-family: monospace; }
-        button { padding: 10px 20px; font-size: 18px; cursor: pointer; background: #444; color: white; border: none; border-radius: 5px; margin-top: 20px; }
+        button { padding: 12px 24px; font-size: 18px; cursor: pointer; background: #444; color: white; border: none; border-radius: 5px; margin-top: 20px; transition: 0.2s; }
         button:hover { background: #666; }
-        input { padding: 10px; font-size: 16px; margin-bottom: 20px; border-radius: 5px; border: 1px solid #444; }
-        ul { text-align: left; display: inline-block; }
+        input { padding: 10px; font-size: 16px; margin-bottom: 10px; border-radius: 5px; border: 1px solid #444; background: #222; color: white; }
     </style>
 </head>
 <body>
@@ -24,27 +23,27 @@
             <h1>Motion Perception Task</h1>
             <p id="welcome-text">Please enter your initials to begin.</p>
             <div id="input-area">
-                <input type="text" id="participant-id" placeholder="Enter Initials">
+                <input type="text" id="participant-id" placeholder="Initials">
                 <br>
                 <button onclick="assignCondition()">Next</button>
             </div>
         </div>
 
         <div id="instructions-screen" class="hidden">
-            <h1>Instructions</h1>
-            <p id="instruction-content"></p>
+            <h1 id="instr-title">Instructions</h1>
+            <p id="instruction-content" style="line-height: 1.6; text-align: left;"></p>
             <button onclick="startTask()">Start Task</button>
         </div>
 
         <div id="task-screen" class="hidden">
             <div id="timer" class="hidden">Time: <span id="time-val">0.00</span>s</div>
-            <div id="instruction-text" style="margin-bottom:10px;">Use Left/Right arrow keys to respond.</div>
+            <div id="instruction-header" style="margin-bottom:10px; font-weight: bold;"></div>
             <canvas id="rdmCanvas" width="500" height="400"></canvas>
         </div>
 
         <div id="results-screen" class="hidden">
             <h2>Task Complete</h2>
-            <p>Your data is being saved...</p>
+            <p>Processing results...</p>
             <canvas id="resultsChart" width="400" height="300"></canvas>
         </div>
     </div>
@@ -56,9 +55,9 @@
     let currentTrial = 0;
     const totalTrials = 10;
     let trialData = [];
-    let startTime, timerInterval;
+    let startTime, timerInterval, animationId;
     let availableConditions = []; 
-    
+
     const canvas = document.getElementById('rdmCanvas');
     const ctx = canvas.getContext('2d');
     let dots = [];
@@ -66,65 +65,69 @@
     const coherence = 0.05; 
     const signalSpeed = 10;
     const noiseSpeedMultiplier = 10;
-    let targetDirection; 
-    let animationId;
 
+    // Load conditions from GSHEET
     async function checkAvailability() {
         try {
             const response = await fetch(WEB_APP_URL);
             const data = await response.json();
             if (data.full) {
-                document.getElementById('welcome-text').innerText = "Maximum capacity reached. Thank you!";
+                document.getElementById('welcome-text').innerText = "Capacity reached. Thank you!";
                 document.getElementById('input-area').classList.add('hidden');
             } else {
                 availableConditions = data.availableConditions;
             }
         } catch (e) {
-            console.error("Connection error:", e);
             availableConditions = ['Control', 'Implicit', 'Explicit'];
         }
     }
-
     checkAvailability();
 
-    // Step 1: Handle logic for assigning condition and showing the specific instructions
+    // Logic to show the new Instructions Screen
     function assignCondition() {
         participantID = document.getElementById('participant-id').value || "User_" + Math.random().toString(36).substr(2, 5);
         
         if (availableConditions.length === 0) {
-            alert("Checking availability, please wait a moment...");
+            alert("Still loading settings... try again in a second.");
             return;
         }
 
+        // Randomly assign condition from available pool
         condition = availableConditions[Math.floor(Math.random() * availableConditions.length)];
-        
-        // Hide welcome, show instructions
+        console.log("Assigned Condition:", condition); // Check your console (F12) to see this
+
         document.getElementById('welcome-screen').classList.add('hidden');
         document.getElementById('instructions-screen').classList.remove('hidden');
 
-        // Set Instructions based on condition
-        let baseText = "You'll see a cloud of moving dots. Some dots move coherently LEFT or RIGHT, while others move randomly. Your job is to decide which direction the coherent dots are moving.<br><br>• Press/tap the button to start<br>• Press ←/→ buttons to respond.";
-        
+        // Text setup
+        const standardText = "You'll see a cloud of moving dots. Some dots move coherently LEFT or RIGHT, while others move randomly. Your job is to decide which direction the coherent dots are moving.<br><br>• Press tap the button to start<br>• Press ←/→ buttons to respond.";
+        const speedText = "<br><strong>Respond as quickly and accurately as possible.</strong>";
+
         if (condition === 'Explicit') {
-            document.getElementById('instruction-content').innerHTML = baseText + " <strong>Respond as quickly and accurately as possible.</strong>";
+            document.getElementById('instruction-content').innerHTML = standardText + speedText;
         } else {
-            // Control and Implicit get the same text as per your requirements
-            document.getElementById('instruction-content').innerHTML = baseText;
+            // Control and Implicit use the standard text
+            document.getElementById('instruction-content').innerHTML = standardText;
         }
     }
 
-    // Step 2: Actually start the RDM dots
+    // Move from instructions to dots
     function startTask() {
         document.getElementById('instructions-screen').classList.add('hidden');
         document.getElementById('task-screen').classList.remove('hidden');
 
+        const header = document.getElementById('instruction-header');
+        
         if (condition !== 'Control') {
             document.getElementById('timer').classList.remove('hidden');
         }
         
         if (condition === 'Explicit') {
-            document.getElementById('instruction-text').innerText = "RESPOND AS FAST AS POSSIBLE! (Left/Right Arrows)";
-            document.getElementById('instruction-text').style.color = "yellow";
+            header.innerText = "RESPOND AS FAST AS POSSIBLE!";
+            header.style.color = "yellow";
+        } else {
+            header.innerText = "Use Left/Right arrow keys to respond.";
+            header.style.color = "white";
         }
 
         initTrial();
@@ -132,8 +135,7 @@
 
     function initTrial() {
         if (currentTrial >= totalTrials) return endExperiment();
-        
-        targetDirection = Math.random() > 0.5 ? 1 : -1;
+        let targetDirection = Math.random() > 0.5 ? 1 : -1;
         dots = [];
         for (let i = 0; i < numDots; i++) {
             dots.push({
@@ -147,55 +149,48 @@
         
         startTime = performance.now();
         if (condition !== 'Control') startTimerUI();
-        animate();
+        
+        const handleResponse = (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                const rt = performance.now() - startTime;
+                const responseDir = e.key === 'ArrowRight' ? 1 : -1;
+                window.removeEventListener('keydown', handleResponse);
+                cancelAnimationFrame(animationId);
+                clearInterval(timerInterval);
+                
+                trialData.push({
+                    Participant_ID: participantID,
+                    Condition: condition,
+                    Trial_Number: currentTrial + 1,
+                    Reaction_Time: Math.round(rt),
+                    Accuracy: responseDir === targetDirection ? 1 : 0
+                });
+                
+                currentTrial++;
+                setTimeout(initTrial, 500); 
+            }
+        };
+
+        animate(targetDirection);
         window.addEventListener('keydown', handleResponse);
     }
 
-    function animate() {
+    function animate(dir) {
         ctx.fillStyle = 'black';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = 'white';
-        
         dots.forEach(dot => {
-            if (dot.isCoherent) {
-                dot.x += (targetDirection * signalSpeed);
-            } else {
-                dot.x += dot.vx;
-                dot.y += dot.vy;
-            }
+            if (dot.isCoherent) dot.x += (dir * signalSpeed);
+            else { dot.x += dot.vx; dot.y += dot.vy; }
             if (dot.x > canvas.width) dot.x = 0;
             if (dot.x < 0) dot.x = canvas.width;
             if (dot.y > canvas.height) dot.y = 0;
             if (dot.y < 0) dot.y = canvas.height;
-            
             ctx.beginPath();
             ctx.arc(dot.x, dot.y, 2, 0, Math.PI * 2);
             ctx.fill();
         });
-        animationId = requestAnimationFrame(animate);
-    }
-
-    function handleResponse(e) {
-        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-            const rt = performance.now() - startTime;
-            const responseDir = e.key === 'ArrowRight' ? 1 : -1;
-            const isCorrect = responseDir === targetDirection ? 1 : 0;
-            
-            window.removeEventListener('keydown', handleResponse);
-            cancelAnimationFrame(animationId);
-            clearInterval(timerInterval);
-            
-            trialData.push({
-                Participant_ID: participantID,
-                Condition: condition,
-                Trial_Number: currentTrial + 1,
-                Reaction_Time: Math.round(rt),
-                Accuracy: isCorrect
-            });
-            
-            currentTrial++;
-            setTimeout(initTrial, 500); 
-        }
+        animationId = requestAnimationFrame(() => animate(dir));
     }
 
     function startTimerUI() {
@@ -208,53 +203,36 @@
     async function endExperiment() {
         document.getElementById('task-screen').classList.add('hidden');
         document.getElementById('results-screen').classList.remove('hidden');
-
         try {
             await fetch(WEB_APP_URL, {
                 method: "POST",
-                mode: "no-cors", 
-                cache: "no-cache",
+                mode: "no-cors",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(trialData)
             });
-        } catch (error) {
-            console.error("Data send failed:", error);
-        }
+        } catch (e) {}
 
         setTimeout(async () => {
             try {
                 const response = await fetch(WEB_APP_URL);
                 const data = await response.json();
                 plotResults(data.history || []);
-            } catch (err) {
-                plotResults([]); 
-            }
-        }, 1500);
+            } catch (err) { plotResults([]); }
+        }, 1000);
     }
 
     function plotResults(history) {
         const userAvg = trialData.reduce((a, b) => a + b.Reaction_Time, 0) / trialData.length;
         let globalAvg = history.length > 0 ? history.reduce((a, b) => a + Number(b), 0) / history.length : userAvg;
-
         const ctxChart = document.getElementById('resultsChart').getContext('2d');
-        if (window.myChart) { window.myChart.destroy(); }
-
-        window.myChart = new Chart(ctxChart, {
+        new Chart(ctxChart, {
             type: 'bar',
             data: {
-                labels: ['Your Average', 'Global Avg'],
-                datasets: [{
-                    label: 'Reaction Time (ms)',
-                    data: [Math.round(userAvg), Math.round(globalAvg)],
-                    backgroundColor: ['#44bbff', '#ff4444']
-                }]
-            },
-            options: { 
-                responsive: true,
-                scales: { y: { beginAtZero: true, title: { display: true, text: 'Milliseconds' } } } 
+                labels: ['You', 'Global Avg'],
+                datasets: [{ label: 'RT (ms)', data: [userAvg, globalAvg], backgroundColor: ['#44bbff', '#ff4444'] }]
             }
         });
-        document.querySelector('#results-screen p').innerText = "Task Complete!";
+        document.querySelector('#results-screen p').innerText = "Data Saved!";
     }
 </script>
 </body>
