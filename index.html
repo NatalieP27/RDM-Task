@@ -7,13 +7,14 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { background-color: #111; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
-        #experiment-container { text-align: center; max-width: 600px; }
+        #experiment-container { text-align: center; max-width: 600px; padding: 20px; }
         canvas { background: black; border: 2px solid #444; cursor: crosshair; }
         .hidden { display: none; }
         #timer { font-size: 24px; color: #ff4444; margin-bottom: 10px; font-family: monospace; }
-        button { padding: 10px 20px; font-size: 18px; cursor: pointer; background: #444; color: white; border: none; border-radius: 5px; }
+        button { padding: 10px 20px; font-size: 18px; cursor: pointer; background: #444; color: white; border: none; border-radius: 5px; margin-top: 20px; }
         button:hover { background: #666; }
-        input { padding: 10px; font-size: 16px; margin-bottom: 20px; }
+        input { padding: 10px; font-size: 16px; margin-bottom: 20px; border-radius: 5px; border: 1px solid #444; }
+        ul { text-align: left; display: inline-block; }
     </style>
 </head>
 <body>
@@ -21,12 +22,18 @@
     <div id="experiment-container">
         <div id="welcome-screen">
             <h1>Motion Perception Task</h1>
-            <p id="welcome-text">Identify the direction of the coherent motion (Left or Right).</p>
+            <p id="welcome-text">Please enter your initials to begin.</p>
             <div id="input-area">
                 <input type="text" id="participant-id" placeholder="Enter Initials">
                 <br>
-                <button onclick="startExperiment()">Start Task</button>
+                <button onclick="assignCondition()">Next</button>
             </div>
+        </div>
+
+        <div id="instructions-screen" class="hidden">
+            <h1>Instructions</h1>
+            <p id="instruction-content"></p>
+            <button onclick="startTask()">Start Task</button>
         </div>
 
         <div id="task-screen" class="hidden">
@@ -45,65 +52,76 @@
 <script>
     const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwwXW4GA0vEmeWfNPgtl3BZYPi4GoC6uqBwUrxX0aZ7GBj4JUE8ItD-TyPKYrVxSLFDeg/exec";
     
-    // Experiment Variables
     let participantID, condition;
     let currentTrial = 0;
     const totalTrials = 10;
     let trialData = [];
     let startTime, timerInterval;
-    let availableConditions = []; // Will be populated from Google Sheets
+    let availableConditions = []; 
     
-    // RDM Settings
     const canvas = document.getElementById('rdmCanvas');
     const ctx = canvas.getContext('2d');
     let dots = [];
     const numDots = 500;
     const coherence = 0.05; 
-    const dotVelocity = 100;
-    const dotRadius = 1; 
-    const noiseSpeedMultiplier = 10;
     const signalSpeed = 10;
+    const noiseSpeedMultiplier = 10;
     let targetDirection; 
     let animationId;
 
-    // --- NEW: Check availability on load ---
     async function checkAvailability() {
         try {
             const response = await fetch(WEB_APP_URL);
             const data = await response.json();
-            
             if (data.full) {
-                document.getElementById('welcome-text').innerText = "The study has reached its maximum capacity of 30 participants. Thank you for your interest!";
+                document.getElementById('welcome-text').innerText = "Maximum capacity reached. Thank you!";
                 document.getElementById('input-area').classList.add('hidden');
             } else {
                 availableConditions = data.availableConditions;
             }
         } catch (e) {
             console.error("Connection error:", e);
-            // Fallback: allow all conditions if the check fails
             availableConditions = ['Control', 'Implicit', 'Explicit'];
         }
     }
 
-    // Call the availability check immediately
     checkAvailability();
 
-    function startExperiment() {
+    // Step 1: Handle logic for assigning condition and showing the specific instructions
+    function assignCondition() {
         participantID = document.getElementById('participant-id').value || "User_" + Math.random().toString(36).substr(2, 5);
         
-        // Pick a condition ONLY from those that still need participants
         if (availableConditions.length === 0) {
             alert("Checking availability, please wait a moment...");
             return;
         }
+
         condition = availableConditions[Math.floor(Math.random() * availableConditions.length)];
         
+        // Hide welcome, show instructions
         document.getElementById('welcome-screen').classList.add('hidden');
+        document.getElementById('instructions-screen').classList.remove('hidden');
+
+        // Set Instructions based on condition
+        let baseText = "You'll see a cloud of moving dots. Some dots move coherently LEFT or RIGHT, while others move randomly. Your job is to decide which direction the coherent dots are moving.<br><br>• Press/tap the button to start<br>• Press ←/→ buttons to respond.";
+        
+        if (condition === 'Explicit') {
+            document.getElementById('instruction-content').innerHTML = baseText + " <strong>Respond as quickly and accurately as possible.</strong>";
+        } else {
+            // Control and Implicit get the same text as per your requirements
+            document.getElementById('instruction-content').innerHTML = baseText;
+        }
+    }
+
+    // Step 2: Actually start the RDM dots
+    function startTask() {
+        document.getElementById('instructions-screen').classList.add('hidden');
         document.getElementById('task-screen').classList.remove('hidden');
 
         if (condition !== 'Control') {
             document.getElementById('timer').classList.remove('hidden');
         }
+        
         if (condition === 'Explicit') {
             document.getElementById('instruction-text').innerText = "RESPOND AS FAST AS POSSIBLE! (Left/Right Arrows)";
             document.getElementById('instruction-text').style.color = "yellow";
@@ -145,7 +163,6 @@
                 dot.x += dot.vx;
                 dot.y += dot.vy;
             }
-            
             if (dot.x > canvas.width) dot.x = 0;
             if (dot.x < 0) dot.x = canvas.width;
             if (dot.y > canvas.height) dot.y = 0;
@@ -188,7 +205,7 @@
         }, 50);
     }
 
-   async function endExperiment() {
+    async function endExperiment() {
         document.getElementById('task-screen').classList.add('hidden');
         document.getElementById('results-screen').classList.remove('hidden');
 
@@ -208,10 +225,8 @@
             try {
                 const response = await fetch(WEB_APP_URL);
                 const data = await response.json();
-                // Pass the history array (extracted from the object) to the plot
                 plotResults(data.history || []);
             } catch (err) {
-                console.error("Could not fetch history:", err);
                 plotResults([]); 
             }
         }, 1500);
@@ -219,13 +234,7 @@
 
     function plotResults(history) {
         const userAvg = trialData.reduce((a, b) => a + b.Reaction_Time, 0) / trialData.length;
-        let globalAvg = 0;
-        
-        if (history && history.length > 0) {
-            globalAvg = history.reduce((a, b) => a + Number(b), 0) / history.length;
-        } else {
-            globalAvg = userAvg;
-        }
+        let globalAvg = history.length > 0 ? history.reduce((a, b) => a + Number(b), 0) / history.length : userAvg;
 
         const ctxChart = document.getElementById('resultsChart').getContext('2d');
         if (window.myChart) { window.myChart.destroy(); }
@@ -245,7 +254,6 @@
                 scales: { y: { beginAtZero: true, title: { display: true, text: 'Milliseconds' } } } 
             }
         });
-
         document.querySelector('#results-screen p').innerText = "Task Complete!";
     }
 </script>
